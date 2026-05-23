@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
-import { LayoutDashboard, Package, Tag, Handshake, Bell, BarChart2, MessageCircle, LogOut, Leaf } from 'lucide-react'
+import { LayoutDashboard, Package, Tag, Handshake, Bell, BarChart2, MessageCircle, LogOut, Leaf, UserCircle } from 'lucide-react'
 
 const nav = [
   { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard'     },
@@ -10,6 +10,7 @@ const nav = [
   { to: '/notificacoes', icon: Bell,            label: 'Notificações'  },
   { to: '/relatorios',   icon: BarChart2,       label: 'Relatórios'    },
   { to: '/chatbot',      icon: MessageCircle,   label: 'AgroBot IA'    },
+  { to: '/perfil',       icon: UserCircle,      label: 'Meu Perfil'    },
 ]
 
 export default function Sidebar() {

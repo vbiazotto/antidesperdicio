@@ -7,6 +7,7 @@ import { Produtos } from './pages/Produtos'
 import Ofertas from './pages/Ofertas'
 import { Parcerias, Notificacoes, Relatorios } from './pages/OutrasPages'
 import Chatbot from './pages/Chatbot'
+import Perfil from './pages/Perfil'
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
             <Route path="/notificacoes" element={<Notificacoes />} />
             <Route path="/relatorios"   element={<Relatorios />} />
             <Route path="/chatbot"      element={<Chatbot />} />
+            <Route path="/perfil"       element={<Perfil />} />
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
