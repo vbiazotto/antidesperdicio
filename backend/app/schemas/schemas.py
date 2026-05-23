@@ -163,3 +163,10 @@ class ChatbotResposta(BaseModel):
     resposta: str
     intencao: Optional[str]
     sessao_id: str
+
+
+# ── Oferta com localização do produtor ───────────────────────────────────────
+class OfertaOutDetalhada(OfertaOut):
+    localizacao_produtor: str | None = None
+    nome_produtor: str | None = None
+    model_config = {"from_attributes": True}

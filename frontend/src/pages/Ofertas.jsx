@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react'
-import { ofertaService, produtoService, parceriaService } from '../services/api'
-import { Plus, Tag, X } from 'lucide-react'
+import { useEffect, useState, Suspense, lazy } from 'react'
+import { ofertaService, produtoService, parceriaService, usuarioService } from '../services/api'
+import { usePolling } from '../hooks/usePolling'
+import { Plus, Tag, X, RefreshCw, MapPin, ChevronDown, ChevronUp } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
+
+const MapaOferta = lazy(() => import('../components/ui/MapaOferta'))
 
 const statusBadge = { ativa:'badge-green', reservada:'badge-orange', concluida:'badge-gray', expirada:'badge-gray' }
 
@@ -14,13 +17,19 @@ export default function Ofertas() {
   const [form, setForm] = useState({ produto_id:'', quantidade_disponivel:'', tipo:'doacao', preco:'' })
   const [loading, setLoading] = useState(false)
   const [msg, setMsg] = useState('')
+  const [lastUpdate, setLastUpdate] = useState(null)
+  const [mapaAberto, setMapaAberto] = useState(null)
   const set = k => e => setForm(f => ({...f, [k]: e.target.value}))
 
   const load = async () => {
-    const [o, p] = await Promise.all([ofertaService.listar({ status: filtro }), produtoService.listar()])
-    setOfertas(o.data); setProdutos(p.data)
+    try {
+      const [o, p] = await Promise.all([ofertaService.listar({ status: filtro }), produtoService.listar()])
+      setOfertas(o.data); setProdutos(p.data); setLastUpdate(new Date())
+    } catch {}
   }
+
   useEffect(() => { load() }, [filtro])
+  usePolling(load, 10000)
 
   const criar = async e => {
     e.preventDefault(); setLoading(true)
@@ -31,17 +40,30 @@ export default function Ofertas() {
   }
 
   const solicitar = async (ofertaId, qtd) => {
-    try { await parceriaService.solicitar({ oferta_id: ofertaId, quantidade_retirada: qtd }); setMsg('Coleta solicitada!'); load() }
-    catch (err) { setMsg(err.response?.data?.detail || 'Erro') }
+    try { await parceriaService.solicitar({ oferta_id: ofertaId, quantidade_retirada: qtd }); setMsg('Coleta solicitada com sucesso!'); load() }
+    catch (err) { setMsg(err.response?.data?.detail || 'Erro ao solicitar coleta') }
   }
+
+  const toggleMapa = (id) => setMapaAberto(mapaAberto === id ? null : id)
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <div><h1 className="text-2xl font-bold text-primary-700">Ofertas</h1><p className="text-gray-500 text-sm mt-1">Publique ou encontre alimentos disponíveis</p></div>
-        <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" /> Nova Oferta</button>
+        <div>
+          <h1 className="text-2xl font-bold text-primary-700">Ofertas</h1>
+          <p className="text-gray-500 text-sm mt-1">Publique ou encontre alimentos disponíveis</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-1 text-xs text-gray-400">
+            <RefreshCw className="w-3 h-3" />
+            {lastUpdate ? lastUpdate.toLocaleTimeString('pt-BR') : ''}
+          </span>
+          <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" /> Nova Oferta</button>
+        </div>
       </div>
+
       {msg && <div className="mb-4 bg-green-50 text-green-700 text-sm rounded-lg px-4 py-2 flex justify-between">{msg}<button onClick={() => setMsg('')}><X className="w-4 h-4" /></button></div>}
+
       <div className="flex gap-2 mb-4">
         {['ativa','reservada','concluida'].map(s => (
           <button key={s} onClick={() => setFiltro(s)} className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${filtro === s ? 'bg-primary-700 text-white' : 'bg-white text-gray-600 border hover:bg-gray-50'}`}>
@@ -49,22 +71,53 @@ export default function Ofertas() {
           </button>
         ))}
       </div>
+
       <div className="space-y-3">
-        {ofertas.length === 0 ? (
-          <div className="card text-center py-10 text-gray-400"><Tag className="w-10 h-10 mx-auto mb-2 opacity-30" /><p>Nenhuma oferta encontrada</p></div>
-        ) : ofertas.map(o => (
-          <div key={o.id} className="card flex items-center justify-between gap-4">
-            <div className="flex-1">
-              <div className="flex gap-2 mb-1"><span className={statusBadge[o.status] || 'badge-gray'}>{o.status}</span><span className="badge-blue">{o.tipo === 'doacao' ? 'Doação' : 'Venda c/ desconto'}</span></div>
-              <p className="font-semibold text-gray-800">Produto #{o.produto_id}</p>
-              <p className="text-sm text-gray-500">{o.quantidade_disponivel} unidades{o.preco ? ` · R$ ${o.preco.toFixed(2)}` : ' · Gratuito'}</p>
+        {ofertas.length === 0
+          ? <div className="card text-center py-10 text-gray-400"><Tag className="w-10 h-10 mx-auto mb-2 opacity-30" /><p>Nenhuma oferta encontrada</p></div>
+          : ofertas.map(o => (
+            <div key={o.id} className="card">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex gap-2 mb-1">
+                    <span className={statusBadge[o.status] || 'badge-gray'}>{o.status}</span>
+                    <span className="badge-blue">{o.tipo === 'doacao' ? 'Doação' : 'Venda c/ desconto'}</span>
+                  </div>
+                  <p className="font-semibold text-gray-800">Produto #{o.produto_id}</p>
+                  <p className="text-sm text-gray-500">{o.quantidade_disponivel} unidades{o.preco ? ` · R$ ${o.preco.toFixed(2)}` : ' · Gratuito'}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {/* Botão Ver Localização */}
+                  <button
+                    onClick={() => toggleMapa(o.id)}
+                    className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-800 border border-primary-200 hover:border-primary-400 px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    <MapPin className="w-3.5 h-3.5" />
+                    {mapaAberto === o.id ? 'Fechar' : 'Ver local'}
+                    {mapaAberto === o.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  </button>
+                  {o.status === 'ativa' && o.produtor_id !== user?.id && (
+                    <button onClick={() => solicitar(o.id, o.quantidade_disponivel)} className="btn-accent text-sm py-1.5 px-3">Solicitar Coleta</button>
+                  )}
+                </div>
+              </div>
+
+              {/* Mapa expansível */}
+              {mapaAberto === o.id && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <Suspense fallback={<div className="h-48 bg-gray-100 rounded-xl flex items-center justify-center text-gray-400 text-sm">Carregando mapa...</div>}>
+                    <MapaOferta
+                      enderecoProdutor={o.localizacao_produtor || "São Paulo, SP, Brasil"}
+                      enderecoUsuario={user?.localizacao}
+                    />
+                  </Suspense>
+                </div>
+              )}
             </div>
-            {o.status === 'ativa' && o.produtor_id !== user?.id && (
-              <button onClick={() => solicitar(o.id, o.quantidade_disponivel)} className="btn-accent text-sm py-1.5 px-3">Solicitar Coleta</button>
-            )}
-          </div>
-        ))}
+          ))
+        }
       </div>
+
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
