@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const api = axios.create({ baseURL: 'http://192.168.1.15:8000/api', headers: { 'Content-Type': 'application/json' } })
+const api = axios.create({ baseURL: 'https://antidesperdicio-production.up.railway.app/api', headers: { 'Content-Type': 'application/json' } })
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
