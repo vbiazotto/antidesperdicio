@@ -1,5 +1,5 @@
 import { useEffect, useState, Suspense, lazy } from 'react'
-import { ofertaService, produtoService, parceriaService, usuarioService } from '../services/api'
+import { ofertaService, produtoService, parceriaService } from '../services/api'
 import { usePolling } from '../hooks/usePolling'
 import { Plus, Tag, X, RefreshCw, MapPin, ChevronDown, ChevronUp } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -14,7 +14,7 @@ export default function Ofertas() {
   const [produtos, setProdutos] = useState([])
   const [showModal, setShowModal] = useState(false)
   const [filtro, setFiltro] = useState('ativa')
-  const [form, setForm] = useState({ produto_id:'', quantidade_disponivel:'', tipo:'doacao', preco:'' })
+  const [form, setForm] = useState({ produto_id:'', tipo:'doacao', preco:'' })
   const [loading, setLoading] = useState(false)
   const [msg, setMsg] = useState('')
   const [lastUpdate, setLastUpdate] = useState(null)
@@ -31,17 +31,33 @@ export default function Ofertas() {
   useEffect(() => { load() }, [filtro])
   usePolling(load, 10000)
 
+  // Produto selecionado no modal
+  const produtoSelecionado = produtos.find(p => p.id === parseInt(form.produto_id))
+
   const criar = async e => {
     e.preventDefault(); setLoading(true)
     try {
-      await ofertaService.criar({ produto_id: parseInt(form.produto_id), quantidade_disponivel: parseFloat(form.quantidade_disponivel), tipo: form.tipo, preco: form.tipo === 'venda_desconto' ? parseFloat(form.preco) : null })
-      setShowModal(false); setForm({ produto_id:'', quantidade_disponivel:'', tipo:'doacao', preco:'' }); load()
-    } catch (err) { setMsg(err.response?.data?.detail || 'Erro ao criar oferta') } finally { setLoading(false) }
+      // Usa automaticamente a quantidade total do produto
+      await ofertaService.criar({
+        produto_id: parseInt(form.produto_id),
+        quantidade_disponivel: produtoSelecionado?.quantidade || 0,
+        tipo: form.tipo,
+        preco: form.tipo === 'venda_desconto' ? parseFloat(form.preco) : null
+      })
+      setShowModal(false)
+      setForm({ produto_id:'', tipo:'doacao', preco:'' })
+      load()
+    } catch (err) {
+      setMsg(err.response?.data?.detail || 'Erro ao criar oferta')
+    } finally { setLoading(false) }
   }
 
   const solicitar = async (ofertaId, qtd) => {
-    try { await parceriaService.solicitar({ oferta_id: ofertaId, quantidade_retirada: qtd }); setMsg('Coleta solicitada com sucesso!'); load() }
-    catch (err) { setMsg(err.response?.data?.detail || 'Erro ao solicitar coleta') }
+    try {
+      await parceriaService.solicitar({ oferta_id: ofertaId, quantidade_retirada: qtd })
+      setMsg('Coleta solicitada com sucesso!')
+      load()
+    } catch (err) { setMsg(err.response?.data?.detail || 'Erro ao solicitar coleta') }
   }
 
   const toggleMapa = (id) => setMapaAberto(mapaAberto === id ? null : id)
@@ -58,15 +74,22 @@ export default function Ofertas() {
             <RefreshCw className="w-3 h-3" />
             {lastUpdate ? lastUpdate.toLocaleTimeString('pt-BR') : ''}
           </span>
-          <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" /> Nova Oferta</button>
+          <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-2">
+            <Plus className="w-4 h-4" /> Nova Oferta
+          </button>
         </div>
       </div>
 
-      {msg && <div className="mb-4 bg-green-50 text-green-700 text-sm rounded-lg px-4 py-2 flex justify-between">{msg}<button onClick={() => setMsg('')}><X className="w-4 h-4" /></button></div>}
+      {msg && (
+        <div className="mb-4 bg-green-50 text-green-700 text-sm rounded-lg px-4 py-2 flex justify-between">
+          {msg}<button onClick={() => setMsg('')}><X className="w-4 h-4" /></button>
+        </div>
+      )}
 
       <div className="flex gap-2 mb-4">
         {['ativa','reservada','concluida'].map(s => (
-          <button key={s} onClick={() => setFiltro(s)} className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${filtro === s ? 'bg-primary-700 text-white' : 'bg-white text-gray-600 border hover:bg-gray-50'}`}>
+          <button key={s} onClick={() => setFiltro(s)}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${filtro === s ? 'bg-primary-700 text-white' : 'bg-white text-gray-600 border hover:bg-gray-50'}`}>
             {s.charAt(0).toUpperCase() + s.slice(1)}
           </button>
         ))}
@@ -84,10 +107,13 @@ export default function Ofertas() {
                     <span className="badge-blue">{o.tipo === 'doacao' ? 'Doação' : 'Venda c/ desconto'}</span>
                   </div>
                   <p className="font-semibold text-gray-800">Produto #{o.produto_id}</p>
-                  <p className="text-sm text-gray-500">{o.quantidade_disponivel} unidades{o.preco ? ` · R$ ${o.preco.toFixed(2)}` : ' · Gratuito'}</p>
+                  <p className="text-sm text-gray-500">
+                    {o.quantidade_disponivel} unidades
+                    {o.preco ? ` · R$ ${o.preco.toFixed(2)}` : ' · Gratuito'}
+                    {o.nome_produtor && ` · ${o.nome_produtor}`}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {/* Botão Ver Localização */}
                   <button
                     onClick={() => toggleMapa(o.id)}
                     className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-800 border border-primary-200 hover:border-primary-400 px-3 py-1.5 rounded-lg transition-colors"
@@ -97,12 +123,13 @@ export default function Ofertas() {
                     {mapaAberto === o.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                   </button>
                   {o.status === 'ativa' && o.produtor_id !== user?.id && (
-                    <button onClick={() => solicitar(o.id, o.quantidade_disponivel)} className="btn-accent text-sm py-1.5 px-3">Solicitar Coleta</button>
+                    <button onClick={() => solicitar(o.id, o.quantidade_disponivel)} className="btn-accent text-sm py-1.5 px-3">
+                      Solicitar Coleta
+                    </button>
                   )}
                 </div>
               </div>
 
-              {/* Mapa expansível */}
               {mapaAberto === o.id && (
                 <div className="mt-4 pt-4 border-t border-gray-100">
                   <Suspense fallback={<div className="h-48 bg-gray-100 rounded-xl flex items-center justify-center text-gray-400 text-sm">Carregando mapa...</div>}>
@@ -118,22 +145,57 @@ export default function Ofertas() {
         }
       </div>
 
+      {/* Modal Nova Oferta — sem campo de quantidade */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-primary-700">Nova Oferta</h2><button onClick={() => setShowModal(false)}><X className="w-5 h-5 text-gray-400" /></button></div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-primary-700">Nova Oferta</h2>
+              <button onClick={() => setShowModal(false)}><X className="w-5 h-5 text-gray-400" /></button>
+            </div>
             <form onSubmit={criar} className="space-y-4">
-              <div><label className="label">Produto</label>
+              <div>
+                <label className="label">Produto</label>
                 <select className="input" value={form.produto_id} onChange={set('produto_id')} required>
-                  <option value="">Selecione</option>
-                  {produtos.map(p => <option key={p.id} value={p.id}>{p.nome} ({p.quantidade} {p.unidade})</option>)}
+                  <option value="">Selecione um produto</option>
+                  {produtos.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.nome} — {p.quantidade} {p.unidade}
+                    </option>
+                  ))}
                 </select>
               </div>
-              <div><label className="label">Tipo</label><select className="input" value={form.tipo} onChange={set('tipo')}><option value="doacao">Doação gratuita</option><option value="venda_desconto">Venda com desconto</option></select></div>
-              <div><label className="label">Quantidade</label><input className="input" type="number" min="0.1" step="0.1" value={form.quantidade_disponivel} onChange={set('quantidade_disponivel')} required /></div>
-              {form.tipo === 'venda_desconto' && <div><label className="label">Preço (R$)</label><input className="input" type="number" min="0.01" step="0.01" value={form.preco} onChange={set('preco')} required /></div>}
+
+              {/* Mostra a quantidade automaticamente */}
+              {produtoSelecionado && (
+                <div className="bg-primary-50 rounded-lg px-4 py-3 text-sm text-primary-700">
+                  ✅ Quantidade disponível: <strong>{produtoSelecionado.quantidade} {produtoSelecionado.unidade}</strong>
+                </div>
+              )}
+
+              <div>
+                <label className="label">Tipo</label>
+                <select className="input" value={form.tipo} onChange={set('tipo')}>
+                  <option value="doacao">Doação gratuita</option>
+                  <option value="venda_desconto">Venda com desconto</option>
+                </select>
+              </div>
+
+              {form.tipo === 'venda_desconto' && (
+                <div>
+                  <label className="label">Preço (R$)</label>
+                  <input className="input" type="number" min="0.01" step="0.01" value={form.preco} onChange={set('preco')} required />
+                </div>
+              )}
+
               {msg && <p className="text-red-500 text-sm">{msg}</p>}
-              <div className="flex gap-2 pt-2"><button type="button" onClick={() => setShowModal(false)} className="btn-secondary flex-1">Cancelar</button><button type="submit" disabled={loading} className="btn-primary flex-1">{loading ? 'Salvando...' : 'Publicar'}</button></div>
+
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={() => setShowModal(false)} className="btn-secondary flex-1">Cancelar</button>
+                <button type="submit" disabled={loading || !produtoSelecionado} className="btn-primary flex-1">
+                  {loading ? 'Publicando...' : 'Publicar'}
+                </button>
+              </div>
             </form>
           </div>
         </div>
